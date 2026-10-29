@@ -1,11 +1,13 @@
 name: Release
 
-# Push a tag like v2.0.1 (matching __version__ in paradox_mod_manager.py) to build
-# the Windows .exe and publish a GitHub release. The app's updater installs from
-# the newest release.
+# Builds the Windows .exe and publishes a GitHub release; the app's updater installs
+# from the newest release. Start it either by pushing a tag like v2.0.1 (matching
+# __version__ in paradox_mod_manager.py) or from the Actions tab ("Run workflow"),
+# which tags the current commit as v<__version__> itself.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,13 +22,20 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Check the tag matches __version__
+      - name: Work out the release tag
         shell: bash
         run: |
           v=$(python paradox_mod_manager.py --version)
-          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match __version__ $v"; exit 1
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match __version__ $v"; exit 1
+            fi
+          elif gh release view "v$v" >/dev/null 2>&1; then
+            echo "::error::Release v$v already exists - bump __version__ first"; exit 1
           fi
+          echo "TAG=v$v" >> "$GITHUB_ENV"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Run tests
         run: python -m unittest discover -s tests -v
@@ -51,7 +60,7 @@ jobs:
         run: |
           python - <<'PY'
           import os, re
-          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          tag = os.environ["TAG"].lstrip("v")
           text = open("CHANGELOG.md", encoding="utf-8").read()
           m = re.search(rf"^## {re.escape(tag)}\b.*?$(.*?)(?=^## |\Z)", text, re.S | re.M)
           body = (m.group(1).strip() if m else "") or "See CHANGELOG.md."
@@ -64,7 +73,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$TAG" --target "$GITHUB_SHA" \
             dist/ParadoxModManager.exe dist/ParadoxModManager.exe.sha256 \
             dist/paradox_mod_manager.py dist/paradox_mod_manager.py.sha256 \
-            --title "Paradox Mod Manager $GITHUB_REF_NAME" --notes-file notes.md
+            --title "Paradox Mod Manager $TAG" --notes-file notes.md

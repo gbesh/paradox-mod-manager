@@ -52,5 +52,5 @@ Run the tests with `python -m unittest discover -s tests`. To build the .exe you
 ## Releasing (maintainers)
 
 1. Bump `__version__` in `paradox_mod_manager.py` and add a section to `CHANGELOG.md`.
-2. Commit, then tag and push: `git tag v2.0.1 && git push origin main v2.0.1`.
+2. Commit and push to `main`, then either push a matching tag (`git tag v2.0.1 && git push origin v2.0.1`) or open **Actions → Release → Run workflow**.
 3. GitHub Actions runs the tests, builds the .exe on Windows and publishes the release with checksums. Installed copies then offer the update.
