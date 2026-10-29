@@ -1,0 +1,70 @@
+name: Release
+
+# Push a tag like v2.0.1 (matching __version__ in paradox_mod_manager.py) to build
+# the Windows .exe and publish a GitHub release. The app's updater installs from
+# the newest release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the tag matches __version__
+        shell: bash
+        run: |
+          v=$(python paradox_mod_manager.py --version)
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match __version__ $v"; exit 1
+          fi
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build ParadoxModManager.exe
+        run: |
+          python -m pip install --upgrade "pyinstaller>=6,<7"
+          pyinstaller --noconfirm --onefile --windowed --name ParadoxModManager paradox_mod_manager.py
+
+      - name: Checksums
+        shell: bash
+        run: |
+          cp paradox_mod_manager.py dist/
+          cd dist
+          for f in ParadoxModManager.exe paradox_mod_manager.py; do
+            sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"
+          done
+          ls -l
+
+      - name: Release notes from CHANGELOG.md
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, re
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## {re.escape(tag)}\b.*?$(.*?)(?=^## |\Z)", text, re.S | re.M)
+          body = (m.group(1).strip() if m else "") or "See CHANGELOG.md."
+          body += "\n\n**Download:** `ParadoxModManager.exe` (Windows, no install needed). Existing users get this automatically via the in-app updater."
+          open("notes.md", "w", encoding="utf-8").write(body)
+          PY
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/ParadoxModManager.exe dist/ParadoxModManager.exe.sha256 \
+            dist/paradox_mod_manager.py dist/paradox_mod_manager.py.sha256 \
+            --title "Paradox Mod Manager $GITHUB_REF_NAME" --notes-file notes.md

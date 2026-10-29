@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+build/
+dist/
+work/
+*.spec
+pmm_config.json
+pmm_config.json.tmp
+pmm_update.log
+*.new
+*.old
